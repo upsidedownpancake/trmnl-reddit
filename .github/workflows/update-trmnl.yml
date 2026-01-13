@@ -9,28 +9,34 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch via Proxy and Push to TRMNL
+      - name: Fetch Reddit and Push to TRMNL
         run: |
-          # 1. Fetch from a proxy that handles the Reddit block for us
-          # Note: We use the 'rsshub.app' proxy which is much friendlier to bots
-          RESPONSE=$(curl -sL 'https://rsshub.app/reddit/subreddit/gonewild')
+          # 1. Get a Guest Token from Reddit
+          # This makes you look like a real 'logged-out' app user
+          GUEST_TOKEN=$(curl -s -X POST "https://www.reddit.com/api/v1/access_token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=https://oauth.reddit.com/grants/installed_client&device_id=DO_NOT_TRACK_THIS_DEVICE" \
+            | jq -r '.access_token')
 
-          # 2. Process the data
-          # Since the proxy returns a slightly different format, we adjust the jq:
+          # 2. Fetch the actual data using that token
+          RESPONSE=$(curl -sL -H "Authorization: Bearer $GUEST_TOKEN" \
+            -A "TRMNL-Plugin-Bot/1.0" \
+            'https://oauth.reddit.com/r/gonewild/hot.json?limit=5')
+
+          # 3. Process into TRMNL format
+          # This checks for i.redd.it links and puts them in merge_variables
           PAYLOAD=$(echo "$RESPONSE" | jq -c '{
             merge_variables: {
               images: [
-                .item[] 
-                | select(.description != null) 
-                | {
-                    url: (.description | codepoint_at(0) | .[] | select(contains("i.redd.it"))), 
-                    title: .title
-                  }
+                .data.children[].data 
+                | select(.url != null and (.url | contains("i.redd.it"))) 
+                | {url: .url, title: .title}
               ]
             }
           }')
 
-          # 3. Send to TRMNL
+          # 4. Debug and Send
+          echo "Payload generated. Sending to TRMNL..."
           curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
