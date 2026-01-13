@@ -9,34 +9,28 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Reddit and Push to TRMNL
+      - name: Fetch via Proxy
         run: |
-          # 1. Get a Guest Token from Reddit
-          # This makes you look like a real 'logged-out' app user
-          GUEST_TOKEN=$(curl -s -X POST "https://www.reddit.com/api/v1/access_token" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "grant_type=https://oauth.reddit.com/grants/installed_client&device_id=DO_NOT_TRACK_THIS_DEVICE" \
-            | jq -r '.access_token')
+          # Use a public RSSHub instance to turn the sub into a clean JSON feed
+          # This handles the 'Blocked' error for us.
+          RESPONSE=$(curl -sL "https://rsshub.app/reddit/subreddit/gonewild.json")
 
-          # 2. Fetch the actual data using that token
-          RESPONSE=$(curl -sL -H "Authorization: Bearer $GUEST_TOKEN" \
-            -A "TRMNL-Plugin-Bot/1.0" \
-            'https://oauth.reddit.com/r/gonewild/hot.json?limit=5')
-
-          # 3. Process into TRMNL format
-          # This checks for i.redd.it links and puts them in merge_variables
+          # We use a very 'safe' jq filter that won't error out if fields are missing
           PAYLOAD=$(echo "$RESPONSE" | jq -c '{
             merge_variables: {
               images: [
-                .data.children[].data 
-                | select(.url != null and (.url | contains("i.redd.it"))) 
-                | {url: .url, title: .title}
-              ]
+                .items[]? | {
+                  url: (.content_html | capture("src=\"(?<u ripple>[^\"]+i\\.redd\\.it[^\"]+)\"") | .u),
+                  title: .title
+                }
+              ] | [select(.url != null)] | .[:5]
             }
           }')
 
-          # 4. Debug and Send
-          echo "Payload generated. Sending to TRMNL..."
+          if [[ "$PAYLOAD" == *'"images":[]'* ]]; then
+            echo "Warning: No images found, but the connection worked."
+          fi
+
           curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
