@@ -9,28 +9,30 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch via Proxy
+      - name: Fetch Reddit RSS and Push to TRMNL
         run: |
-          # Use a public RSSHub instance to turn the sub into a clean JSON feed
-          # This handles the 'Blocked' error for us.
-          RESPONSE=$(curl -sL "https://rsshub.app/reddit/subreddit/gonewild.json")
+          # 1. Fetch the RSS feed (Reddit is less likely to block this)
+          # We use a standard browser User-Agent
+          RESPONSE=$(curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+            'https://www.reddit.com/r/gonewild/.rss?limit=5')
 
-          # We use a very 'safe' jq filter that won't error out if fields are missing
-          PAYLOAD=$(echo "$RESPONSE" | jq -c '{
-            merge_variables: {
-              images: [
-                .items[]? | {
-                  url: (.content_html | capture("src=\"(?<u ripple>[^\"]+i\\.redd\\.it[^\"]+)\"") | .u),
-                  title: .title
-                }
-              ] | [select(.url != null)] | .[:5]
-            }
-          }')
-
-          if [[ "$PAYLOAD" == *'"images":[]'* ]]; then
-            echo "Warning: No images found, but the connection worked."
+          # 2. Check if we actually got content
+          if [[ "$RESPONSE" == *"<!doctype html>"* ]] || [[ -z "$RESPONSE" ]]; then
+            echo "Error: Still blocked by Reddit. Trying a secondary backup URL..."
+            RESPONSE=$(curl -sL -A "Mozilla/5.0" 'https://old.reddit.com/r/gonewild/.rss')
           fi
 
+          # 3. Use 'yq' (built-in to GitHub) to extract image URLs from RSS
+          # This looks for links that end in jpg/png/gif
+          IMAGES_JSON=$(echo "$RESPONSE" | yq -o=json '.feed.entry[] | {"url": .content."+content", "title": .title}' | jq -s '.')
+
+          # 4. Clean up the URLs (Reddit RSS wraps them in HTML tags)
+          CLEAN_IMAGES=$(echo "$IMAGES_JSON" | jq -c 'map(select(.url | contains("i.redd.it")) | .url |= (capture("(?<u>https://i\\.redd\\.it/[^\"]+)").u))')
+
+          # 5. Send to TRMNL
+          PAYLOAD=$(echo "{\"merge_variables\": {\"images\": $CLEAN_IMAGES}}" | jq -c .)
+          
+          echo "Payload ready. Sending..."
           curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
