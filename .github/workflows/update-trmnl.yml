@@ -1,15 +1,26 @@
-- name: Fetch Reddit and Push to TRMNL
+name: Update TRMNL
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Reddit and Push to TRMNL
         run: |
-          # 1. Fetch data
+          # 1. Fetch data with a browser-like User Agent
           RESPONSE=$(curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
             'https://old.reddit.com/r/gonewild.json?limit=5')
 
-          # 2. DEBUG: Show us what we actually got
-          echo "First 100 chars of response:"
+          # 2. Print the start of the response so we can see if it's HTML or JSON
+          echo "First 100 characters of Reddit response:"
           echo "$RESPONSE" | head -c 100
           echo -e "\n---"
 
-          # 3. Try to parse only if it looks like JSON
+          # 3. Process and Send
           if [[ "$RESPONSE" == {* ]]; then
             PAYLOAD=$(echo "$RESPONSE" | jq -c '{
               merge_variables: {
@@ -26,6 +37,6 @@
               -H "Content-Type: application/json" \
               -d "$PAYLOAD"
           else
-            echo "CRITICAL ERROR: Reddit did not return JSON. It returned the HTML shown above."
+            echo "ERROR: Reddit sent back HTML (likely a block). Check the 100 chars above."
             exit 1
           fi
