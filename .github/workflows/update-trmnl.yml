@@ -9,34 +9,28 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Reddit and Push to TRMNL
+      - name: Fetch via Proxy and Push to TRMNL
         run: |
-          # 1. Fetch data with a browser-like User Agent
-          RESPONSE=$(curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            'https://old.reddit.com/r/gonewild.json?limit=5')
+          # 1. Fetch from a proxy that handles the Reddit block for us
+          # Note: We use the 'rsshub.app' proxy which is much friendlier to bots
+          RESPONSE=$(curl -sL 'https://rsshub.app/reddit/subreddit/gonewild')
 
-          # 2. Print the start of the response so we can see if it's HTML or JSON
-          echo "First 100 characters of Reddit response:"
-          echo "$RESPONSE" | head -c 100
-          echo -e "\n---"
+          # 2. Process the data
+          # Since the proxy returns a slightly different format, we adjust the jq:
+          PAYLOAD=$(echo "$RESPONSE" | jq -c '{
+            merge_variables: {
+              images: [
+                .item[] 
+                | select(.description != null) 
+                | {
+                    url: (.description | codepoint_at(0) | .[] | select(contains("i.redd.it"))), 
+                    title: .title
+                  }
+              ]
+            }
+          }')
 
-          # 3. Process and Send
-          if [[ "$RESPONSE" == {* ]]; then
-            PAYLOAD=$(echo "$RESPONSE" | jq -c '{
-              merge_variables: {
-                images: [
-                  .data.children[].data 
-                  | select(.url != null and (.url | test("i\\.redd\\.it.*\\.(jpe?g|png)$"))) 
-                  | {url: .url, title: .title}
-                ]
-              }
-            }')
-            
-            echo "Sending to TRMNL..."
-            curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD"
-          else
-            echo "ERROR: Reddit sent back HTML (likely a block). Check the 100 chars above."
-            exit 1
-          fi
+          # 3. Send to TRMNL
+          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
