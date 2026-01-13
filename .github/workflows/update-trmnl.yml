@@ -11,10 +11,16 @@ jobs:
     steps:
       - name: Fetch Reddit and Push to TRMNL
         run: |
-          # Fetch Reddit JSON and extract images
-          curl -s 'https://www.reddit.com/r/gonewild.json' | \
+          # Fetch and process
+          PAYLOAD=$(curl -s 'https://www.reddit.com/r/gonewild.json' | \
           jq '{images: [.data.children[].data | select(.url and (.url | contains("i.redd.it")) and (.url | test("\\.jpe?g$|\\.png$"))) | {url: .url, title: .title}]}' | \
-          jq -c '{merge_variables: .}' | \
-          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
+          jq -c '{merge_variables: .}')
+          
+          # Show what we're sending (DEBUG)
+          echo "Sending payload:"
+          echo "$PAYLOAD" | jq '.'
+          
+          # Send to TRMNL
+          echo "$PAYLOAD" | curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d @-
