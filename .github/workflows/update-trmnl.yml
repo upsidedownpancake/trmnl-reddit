@@ -9,24 +9,14 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch and Parse Reddit
+      - name: Fetch Reddit RSS and Push to TRMNL
         run: |
-                # 1. Use a JSON proxy that isn't blocked by the "NSFW filter"
-                # We use 'r.jina.ai' which turns any website into clean text for bots
-                TARGET_URL="https://old.reddit.com/r/gonewild"
-                RESPONSE=$(curl -sL "https://r.jina.ai/$TARGET_URL")
-                
-                # 2. Grab any i.redd.it links found in the text
-                URLS=$(echo "$RESPONSE" | grep -o 'https://i.redd.it/[^)]*' | grep -E '\.(jpg|png|jpeg)$' | head -n 5)
-                
-                # 3. Build the JSON (Keep the rest of your loop as is)
-                IMAGES_JSON="["
-                for url in $URLS; do
-                  IMAGES_JSON+="{\"url\":\"$url\",\"title\":\"Reddit Image\"},"
-                done
-                IMAGES_JSON="${IMAGES_JSON%,}]"
-                
-                # 4. Construct and send
-                PAYLOAD="{\"merge_variables\": {\"images\": $IMAGES_JSON}}"
-                echo "Payload built: $PAYLOAD"
-                curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" -H "Content-Type: application/json" -d "$PAYLOAD"
+          # Try RSS feed which sometimes bypasses restrictions
+          curl -A "Mozilla/5.0" -s 'https://www.reddit.com/r/gonewild/.rss' | \
+          grep -oP '(?<=<media:content url=")[^"]*' | \
+          grep -E '\.(jpg|jpeg|png)$' | \
+          head -10 | \
+          jq -R -s 'split("\n") | map(select(length > 0)) | map({url: ., title: "Reddit"}) | {merge_variables: {images: .}}' | \
+          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d @-
