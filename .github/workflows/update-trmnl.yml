@@ -9,14 +9,22 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Reddit RSS and Push to TRMNL
+      - name: Fetch from Multiple Night API Categories
         run: |
-          # Try RSS feed which sometimes bypasses restrictions
-          curl -A "Mozilla/5.0" -s 'https://www.reddit.com/r/gonewild/.rss' | \
-          grep -oP '(?<=<media:content url=")[^"]*' | \
-          grep -E '\.(jpg|jpeg|png)$' | \
-          head -10 | \
-          jq -R -s 'split("\n") | map(select(length > 0)) | map({url: ., title: "Reddit"}) | {merge_variables: {images: .}}' | \
-          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
+          IMAGES_JSON="["
+          
+          # Fetch from multiple categories
+          for category in anal gonewild ass boobs pussy thigh; do
+            for i in {1..5}; do
+              URL=$(curl -s -H "Authorization: fnE17McJPF-x88Qqbswv6hrN1NooS4r-4RTsgA4uQ5" \
+                "https://api.night-api.com/images/nsfw/$category" | jq -r '.content.url')
+              IMAGES_JSON+="{\"url\":\"$URL\",\"title\":\"$category\"},"
+            done
+          done
+          
+          IMAGES_JSON="${IMAGES_JSON%,}]"
+          PAYLOAD="{\"merge_variables\": {\"images\": $IMAGES_JSON}}"
+          
+          echo "$PAYLOAD" | curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d @-
