@@ -1,23 +1,37 @@
-- name: Fetch Reddit via Personal Token
+name: Update TRMNL
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and Parse Reddit
         run: |
-          # 1. Take your secret feed link and add the subreddit to it
-          # REPLACE the URL below with YOUR secret link from Step 1, 
-          # but add /r/gonewild before the .rss
-          
-          SECRET_URL="https://www.reddit.com/r/gonewild/.rss?feed=d2bd570be39826194e3178b4739b268d4e4f7d9b&user=updown345"
-
-          RESPONSE=$(curl -sL -A "Mozilla/5.0" "$SECRET_URL")
-
-          # 2. Extract image links
-          URLS=$(echo "$RESPONSE" | grep -o 'https://i.redd.it/[^"& <]*' | grep -E '\.(jpg|png|jpeg)$' | head -n 5)
-
-          # 3. Build JSON
-          IMAGES_JSON="["
-          for url in $URLS; do
-            IMAGES_JSON+="{\"url\":\"$url\",\"title\":\"Reddit Image\"},"
-          done
-          IMAGES_JSON="${IMAGES_JSON%,}]"
-
-          # 4. Send to TRMNL
-          PAYLOAD="{\"merge_variables\": {\"images\": $IMAGES_JSON}}"
-          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" -H "Content-Type: application/json" -d "$PAYLOAD"
+                # 1. Use your secret feed link (Get this from reddit.com/prefs/feeds/)
+                # Add the subreddit name before the .rss
+                SECRET_URL="https://www.reddit.com/r/gonewild/.rss?feed=d2bd570be39826194e3178b4739b268d4e4f7d9b&user=updown345"
+                
+                RESPONSE=$(curl -sL -A "Mozilla/5.0" "$SECRET_URL")
+                
+                # 2. Brute force extraction of image links
+                URLS=$(echo "$RESPONSE" | grep -o 'https://i.redd.it/[^"& <]*' | grep -E '\.(jpg|png|jpeg)$' | head -n 5)
+                
+                # 3. Build the JSON payload manually
+                IMAGES_JSON="["
+                for url in $URLS; do
+                  IMAGES_JSON+="{\"url\":\"$url\",\"title\":\"Reddit Image\"},"
+                done
+                IMAGES_JSON="${IMAGES_JSON%,}]"
+                
+                # 4. Construct and send to TRMNL
+                PAYLOAD="{\"merge_variables\": {\"images\": $IMAGES_JSON}}"
+                
+                echo "Payload built: $PAYLOAD"
+                
+                curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
+                  -H "Content-Type: application/json" \
+                  -d "$PAYLOAD"
