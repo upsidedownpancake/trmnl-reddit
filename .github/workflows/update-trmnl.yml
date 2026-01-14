@@ -9,16 +9,16 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch from Multiple Night API Categories
+      - name: Fetch from Night API Categories
         run: |
           IMAGES_JSON="["
           
-          # Fetch from multiple categories
-          for category in anal gonewild ass boobs pussy thigh; do
-            for i in {1..5}; do
+          # Only fetch 2 from each category = 10 total images
+          for category in gonewild ass boobs pussy thigh; do
+            for i in {1..2}; do
               URL=$(curl -s -H "Authorization: fnE17McJPF-x88Qqbswv6hrN1NooS4r-4RTsgA4uQ5" \
                 "https://api.night-api.com/images/nsfw/$category" | jq -r '.content.url')
-              IMAGES_JSON+="{\"url\":\"$URL\",\"title\":\"$category\"},"
+              IMAGES_JSON+="{\"url\":\"$URL\"},"
             done
           done
           
