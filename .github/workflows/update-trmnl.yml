@@ -1,37 +1,23 @@
-name: Update TRMNL
-
-on:
-  schedule:
-    - cron: '*/30 * * * *'
-  workflow_dispatch:
-
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch and Parse Reddit
+- name: Fetch Reddit via Personal Token
         run: |
-          # 1. Fetch RSS (more lenient than JSON)
-          RESPONSE=$(curl -sL -A "Mozilla/5.0" 'https://www.reddit.com/r/gonewild/.rss?limit=10')
+          # 1. Take your secret feed link and add the subreddit to it
+          # REPLACE the URL below with YOUR secret link from Step 1, 
+          # but add /r/gonewild before the .rss
+          
+          SECRET_URL="https://www.reddit.com/r/gonewild/.rss?feed=d2bd570be39826194e3178b4739b268d4e4f7d9b&user=updown345"
 
-          # 2. Use 'grep' to find image URLs and 'sed' to clean them up
-          # This is "brute force" - it just looks for strings starting with https://i.redd.it
+          RESPONSE=$(curl -sL -A "Mozilla/5.0" "$SECRET_URL")
+
+          # 2. Extract image links
           URLS=$(echo "$RESPONSE" | grep -o 'https://i.redd.it/[^"& <]*' | grep -E '\.(jpg|png|jpeg)$' | head -n 5)
 
-          # 3. Build the JSON manually to avoid any 'yq' or 'jq' formatting errors
-          # We'll create a simple list of objects
+          # 3. Build JSON
           IMAGES_JSON="["
           for url in $URLS; do
             IMAGES_JSON+="{\"url\":\"$url\",\"title\":\"Reddit Image\"},"
           done
-          # Remove the trailing comma and close the array
           IMAGES_JSON="${IMAGES_JSON%,}]"
 
-          # 4. Construct the final Payload
+          # 4. Send to TRMNL
           PAYLOAD="{\"merge_variables\": {\"images\": $IMAGES_JSON}}"
-
-          # 5. Send to TRMNL
-          echo "Payload built: $PAYLOAD"
-          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD"
+          curl -X POST "${{ secrets.TRMNL_WEBHOOK }}" -H "Content-Type: application/json" -d "$PAYLOAD"
